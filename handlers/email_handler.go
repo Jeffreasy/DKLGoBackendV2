@@ -2,25 +2,129 @@ package handlers
 
 import (
 	"dklautomationgo/models"
-	"dklautomationgo/services"
+	"dklautomationgo/services/email"
+	"fmt"
 	"log"
+	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gin-gonic/gin"
 )
 
 type EmailHandler struct {
-	emailService *services.EmailService
+	emailService *email.EmailService
 }
 
-func NewEmailHandler(emailService *services.EmailService) *EmailHandler {
+func NewEmailHandler(emailService *email.EmailService) *EmailHandler {
 	return &EmailHandler{
 		emailService: emailService,
 	}
 }
 
-func (h *EmailHandler) HandleContactEmail(c *fiber.Ctx) error {
+// GetEmails handles GET /api/emails
+func (h *EmailHandler) GetEmails(c *gin.Context) {
+	// Parse query parameters
+	options := &models.EmailFetchOptions{}
+
+	if limitStr := c.Query("limit"); limitStr != "" {
+		limit, err := strconv.Atoi(limitStr)
+		if err != nil {
+			log.Printf("Invalid limit parameter: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid limit parameter"})
+			return
+		}
+		options.Limit = limit
+	}
+
+	if offsetStr := c.Query("offset"); offsetStr != "" {
+		offset, err := strconv.Atoi(offsetStr)
+		if err != nil {
+			log.Printf("Invalid offset parameter: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid offset parameter"})
+			return
+		}
+		options.Offset = offset
+	}
+
+	if readStr := c.Query("read"); readStr != "" {
+		read, err := strconv.ParseBool(readStr)
+		if err != nil {
+			log.Printf("Invalid read parameter: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid read parameter"})
+			return
+		}
+		options.Read = &read
+	}
+
+	// Fetch emails
+	emails, err := h.emailService.FetchEmails(options)
+	if err != nil {
+		log.Printf("Error fetching emails: %v", err)
+		if strings.Contains(err.Error(), "authentication failed") {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Email authentication failed"})
+			return
+		}
+		if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "dial tcp") {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Could not connect to email server"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to fetch emails: %v", err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": emails})
+}
+
+// GetEmailStats handles GET /api/emails/stats
+func (h *EmailHandler) GetEmailStats(c *gin.Context) {
+	// Get all emails to count
+	emails, err := h.emailService.FetchEmails(nil)
+	if err != nil {
+		log.Printf("Error fetching emails for stats: %v", err)
+		if strings.Contains(err.Error(), "authentication failed") {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Email authentication failed"})
+			return
+		}
+		if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "dial tcp") {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Could not connect to email server"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to fetch email stats: %v", err)})
+		return
+	}
+
+	// Count total and unread
+	total := len(emails)
+	unread := 0
+	for _, email := range emails {
+		if !email.Read {
+			unread++
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"total":  total,
+		"unread": unread,
+	})
+}
+
+// MarkEmailAsRead handles PUT /api/emails/:id/read
+func (h *EmailHandler) MarkEmailAsRead(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Email ID is required"})
+		return
+	}
+
+	// TODO: Implement marking email as read in IMAP
+	// For now, we'll just return success
+	c.JSON(http.StatusOK, gin.H{"status": "success"})
+}
+
+func (h *EmailHandler) HandleContactEmail(c *gin.Context) {
 	// Parse simplified contact form data
 	var formData struct {
 		Naam           string `json:"naam"`
@@ -29,11 +133,10 @@ func (h *EmailHandler) HandleContactEmail(c *fiber.Ctx) error {
 		PrivacyAkkoord bool   `json:"privacy_akkoord"`
 	}
 
-	if err := c.BodyParser(&formData); err != nil {
+	if err := c.BindJSON(&formData); err != nil {
 		log.Printf("Error parsing contact form: %v", err)
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid request body",
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
 	}
 
 	// Create full contact form data
@@ -58,9 +161,8 @@ func (h *EmailHandler) HandleContactEmail(c *fiber.Ctx) error {
 	}
 	if err := h.emailService.SendContactEmail(adminEmailData); err != nil {
 		log.Printf("Error sending admin email: %v", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to send admin notification",
-		})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send admin notification"})
+		return
 	}
 
 	log.Printf("Successfully sent admin email to: %s", os.Getenv("ADMIN_EMAIL"))
@@ -72,25 +174,21 @@ func (h *EmailHandler) HandleContactEmail(c *fiber.Ctx) error {
 	}
 	if err := h.emailService.SendContactEmail(userEmailData); err != nil {
 		log.Printf("Error sending user email: %v", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to send confirmation email",
-		})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send confirmation email"})
+		return
 	}
 
 	log.Printf("Successfully sent confirmation email to: %s", contact.Email)
 
-	return c.JSON(fiber.Map{
-		"message": "Emails sent successfully",
-	})
+	c.JSON(http.StatusOK, gin.H{"message": "Emails sent successfully"})
 }
 
-func (h *EmailHandler) HandleAanmeldingEmail(c *fiber.Ctx) error {
+func (h *EmailHandler) HandleAanmeldingEmail(c *gin.Context) {
 	var aanmelding models.AanmeldingFormulier
-	if err := c.BodyParser(&aanmelding); err != nil {
+	if err := c.BindJSON(&aanmelding); err != nil {
 		log.Printf("Error parsing aanmelding form: %v", err)
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid request body",
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
 	}
 
 	log.Printf("Sending admin email to: %s", os.Getenv("ADMIN_EMAIL"))
@@ -103,9 +201,8 @@ func (h *EmailHandler) HandleAanmeldingEmail(c *fiber.Ctx) error {
 	}
 	if err := h.emailService.SendAanmeldingEmail(adminEmailData); err != nil {
 		log.Printf("Error sending admin email: %v", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to send admin notification",
-		})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send admin notification"})
+		return
 	}
 
 	log.Printf("Successfully sent admin email to: %s", os.Getenv("ADMIN_EMAIL"))
@@ -117,14 +214,11 @@ func (h *EmailHandler) HandleAanmeldingEmail(c *fiber.Ctx) error {
 	}
 	if err := h.emailService.SendAanmeldingEmail(userEmailData); err != nil {
 		log.Printf("Error sending user email: %v", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to send confirmation email",
-		})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send confirmation email"})
+		return
 	}
 
 	log.Printf("Successfully sent confirmation email to: %s", aanmelding.Email)
 
-	return c.JSON(fiber.Map{
-		"message": "Emails sent successfully",
-	})
+	c.JSON(http.StatusOK, gin.H{"message": "Emails sent successfully"})
 }

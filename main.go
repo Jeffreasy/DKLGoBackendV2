@@ -2,24 +2,23 @@ package main
 
 import (
 	"dklautomationgo/handlers"
-	"dklautomationgo/services"
+	"dklautomationgo/services/email"
 	"log"
 	"os"
-	"strings"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
 
 func main() {
-	// Load environment variables
+	// Load .env file
 	if err := godotenv.Load(); err != nil {
-		log.Printf("No .env file found, using environment variables")
+		log.Printf("Warning: .env file not found")
 	}
 
 	// Initialize services
-	emailService, err := services.NewEmailService()
+	emailService, err := email.NewEmailService()
 	if err != nil {
 		log.Fatalf("Failed to initialize email service: %v", err)
 	}
@@ -27,58 +26,59 @@ func main() {
 	// Initialize handlers
 	emailHandler := handlers.NewEmailHandler(emailService)
 
-	// Create Fiber app
-	app := fiber.New(fiber.Config{
-		ErrorHandler: func(c *fiber.Ctx, err error) error {
-			log.Printf("Error handling request: %v", err)
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "Er is een fout opgetreden bij het verwerken van je verzoek",
-			})
-		},
-	})
+	// Setup Gin
+	r := gin.Default()
 
 	// Configure CORS
-	allowedOrigins := strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",")
-	if len(allowedOrigins) == 0 || (len(allowedOrigins) == 1 && allowedOrigins[0] == "") {
-		allowedOrigins = []string{"https://www.dekoninklijkeloop.nl", "https://dekoninklijkeloop.nl"}
+	config := cors.DefaultConfig()
+	config.AllowOrigins = []string{
+		"http://localhost:5173",
+		"http://localhost:3000",
+		"http://127.0.0.1:5173",
+		"http://127.0.0.1:3000",
+		"https://dekoninklijkeloop.nl",
+	}
+	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
+	config.AllowHeaders = []string{
+		"Origin",
+		"Content-Type",
+		"Content-Length",
+		"Accept",
+		"Authorization",
+		"X-Requested-With",
+	}
+	config.AllowCredentials = true
+	config.ExposeHeaders = []string{"Content-Length"}
+	config.MaxAge = 12 * 60 * 60 // 12 hours
+	r.Use(cors.New(config))
+
+	// API routes
+	api := r.Group("/api")
+	{
+		// Email routes
+		emails := api.Group("/emails")
+		{
+			emails.GET("", emailHandler.GetEmails)
+			emails.GET("/stats", emailHandler.GetEmailStats)
+			emails.PUT("/:id/read", emailHandler.MarkEmailAsRead)
+		}
+
+		// Contact form routes
+		api.POST("/contact", emailHandler.HandleContactEmail)
+
+		// Aanmelding routes
+		api.POST("/aanmelding", emailHandler.HandleAanmeldingEmail)
 	}
 
-	app.Use(cors.New(cors.Config{
-		AllowOrigins: strings.Join(allowedOrigins, ","),
-		AllowHeaders: "Origin, Content-Type, Accept",
-		AllowMethods: "GET,POST,OPTIONS",
-	}))
-
-	// Root route
-	app.Get("/", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"message": "DKL Email Service API",
-			"version": "1.0.0",
-		})
-	})
-
-	// API routes group
-	api := app.Group("/api")
-
-	// Health check endpoint
-	api.Get("/health", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"status": "healthy",
-		})
-	})
-
-	// Email routes
-	api.Post("/contact-email", emailHandler.HandleContactEmail)
-	api.Post("/aanmelding-email", emailHandler.HandleAanmeldingEmail)
-
-	// Start server
+	// Get port from environment variable or use default
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080" // Default to 8080 for web traffic
+		port = "8080"
 	}
 
+	// Start server
 	log.Printf("Server starting on port %s", port)
-	if err := app.Listen(":" + port); err != nil {
-		log.Fatalf("Error starting server: %v", err)
+	if err := r.Run(":" + port); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
 	}
 }

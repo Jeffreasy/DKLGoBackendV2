@@ -1,75 +1,16 @@
-package services
+package email
 
 import (
 	"bytes"
 	"crypto/tls"
 	"dklautomationgo/models"
 	"fmt"
-	"html/template"
 	"log"
 	"os"
 	"strconv"
 
 	"gopkg.in/gomail.v2"
 )
-
-const emailStyle = `
-<style>
-	body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-	.container { max-width: 600px; margin: 0 auto; padding: 20px; }
-	h2 { color: #2c5282; margin-bottom: 20px; }
-	h3 { color: #2d3748; margin-top: 20px; }
-	.info-item { margin: 10px 0; }
-	.info-label { font-weight: bold; color: #4a5568; }
-	ul { list-style-type: none; padding-left: 0; }
-	li { margin: 10px 0; }
-	.footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0; }
-	.empty-field { color: #718096; font-style: italic; }
-</style>`
-
-type EmailService struct {
-	templates map[string]*template.Template
-}
-
-func NewEmailService() (*EmailService, error) {
-	templates := make(map[string]*template.Template)
-
-	// Get the current working directory
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get working directory: %v", err)
-	}
-
-	// Load contact email templates
-	contactAdminTemplate, err := template.ParseFiles(fmt.Sprintf("%s/templates/contact_admin_email.html", cwd))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse contact admin template: %v", err)
-	}
-	templates["contact_admin"] = contactAdminTemplate
-
-	contactUserTemplate, err := template.ParseFiles(fmt.Sprintf("%s/templates/contact_email.html", cwd))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse contact user template: %v", err)
-	}
-	templates["contact_user"] = contactUserTemplate
-
-	// Load aanmelding email templates
-	aanmeldingAdminTemplate, err := template.ParseFiles(fmt.Sprintf("%s/templates/aanmelding_admin_email.html", cwd))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse aanmelding admin template: %v", err)
-	}
-	templates["aanmelding_admin"] = aanmeldingAdminTemplate
-
-	aanmeldingUserTemplate, err := template.ParseFiles(fmt.Sprintf("%s/templates/aanmelding_email.html", cwd))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse aanmelding user template: %v", err)
-	}
-	templates["aanmelding_user"] = aanmeldingUserTemplate
-
-	return &EmailService{
-		templates: templates,
-	}, nil
-}
 
 func (s *EmailService) SendContactEmail(data *models.ContactEmailData) error {
 	var templateName string
@@ -150,7 +91,7 @@ func (s *EmailService) sendEmail(to, subject, body string) error {
 	if smtpPortStr == "" {
 		smtpPortStr = "587" // Default port for TLS
 	}
-	smtpUsername := os.Getenv("SMTP_USER") // Changed from SMTP_USERNAME to SMTP_USER
+	smtpUsername := os.Getenv("SMTP_USER")
 	smtpPassword := os.Getenv("SMTP_PASSWORD")
 
 	log.Printf("SMTP Configuration - Host: %s, Port: %s, Username: %s, From: %s", smtpHost, smtpPortStr, smtpUsername, fromEmail)
@@ -159,7 +100,6 @@ func (s *EmailService) sendEmail(to, subject, body string) error {
 		return fmt.Errorf("missing SMTP configuration - Host: %s, Username: %s", smtpHost, smtpUsername)
 	}
 
-	// Parse SMTP port
 	smtpPort, err := strconv.Atoi(smtpPortStr)
 	if err != nil {
 		log.Printf("Invalid SMTP port number: %v, using default 587", err)
@@ -167,8 +107,6 @@ func (s *EmailService) sendEmail(to, subject, body string) error {
 	}
 
 	d := gomail.NewDialer(smtpHost, smtpPort, smtpUsername, smtpPassword)
-
-	// Configure TLS
 	d.TLSConfig = &tls.Config{
 		ServerName: smtpHost,
 	}
