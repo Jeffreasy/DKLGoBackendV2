@@ -324,24 +324,100 @@ De `docker-compose.prod.yml` bevat productie-specifieke configuratie:
 
 ## Deployment
 
-De applicatie kan worden gedeployed op verschillende manieren:
+### Deployment op Render
 
-### Lokale Ontwikkeling
-```powershell
-.\scripts\docker-helper.ps1 start
-```
+De applicatie is geconfigureerd voor eenvoudige deployment op [Render](https://render.com) via de `render.yaml` configuratie.
 
-### Productie Deployment
-```bash
-docker-compose -f docker-compose.prod.yml up -d
-```
+#### Vereisten
+- Een Render account
+- Een GitHub repository met de code
 
-### Render.yaml
-De `render.yaml` configuratie definieert de deployment op het Render platform:
-- Web service configuratie
-- Database configuratie
-- Omgevingsvariabelen
-- Build commando's
+#### Stappen voor deployment
+
+1. **Repository voorbereiden**
+   - Zorg ervoor dat je repository de volgende bestanden bevat:
+     - `render.yaml`
+     - `Dockerfile`
+     - Alle code en configuratiebestanden
+
+2. **Deployment op Render**
+   - Log in op je Render account
+   - Ga naar "Blueprints" in het dashboard
+   - Klik op "New Blueprint Instance"
+   - Selecteer je GitHub repository
+   - Render zal automatisch de `render.yaml` detecteren en de services configureren
+   - Controleer de configuratie en klik op "Apply"
+
+3. **Omgevingsvariabelen instellen**
+   - Na het aanmaken van de services, ga naar de web service
+   - Ga naar "Environment" tab
+   - Vul de volgende geheime omgevingsvariabelen in:
+     - `SMTP_USER`: Email gebruikersnaam
+     - `SMTP_PASSWORD`: Email wachtwoord
+     - `SMTP_FROM`: Email afzender
+     - `INFO_EMAIL_PASSWORD`: Wachtwoord voor info@dekoninklijkeloop.nl
+     - `INSCHRIJVING_EMAIL_PASSWORD`: Wachtwoord voor inschrijving@dekoninklijkeloop.nl
+     - `NOREPLY_EMAIL_PASSWORD`: Wachtwoord voor noreply@dekoninklijkeloop.nl
+     - `ADMIN_EMAIL`: Email adres van de beheerder
+
+4. **Database initialiseren**
+   - De database wordt automatisch aangemaakt door Render
+   - De migraties worden automatisch uitgevoerd bij de eerste start van de applicatie
+
+5. **SSL/TLS configuratie**
+   - Render biedt automatisch SSL/TLS voor alle web services
+   - Je kunt een aangepast domein configureren in de "Settings" tab van je web service
+
+### Handmatige deployment
+
+Voor handmatige deployment, volg deze stappen:
+
+1. **Database voorbereiden**
+   - Maak een PostgreSQL database aan
+   - Voer de migraties uit met het commando:
+     ```
+     ./migrate -path=./database/migrations -database "postgres://user:password@host:port/dbname?sslmode=disable" up
+     ```
+
+2. **Applicatie bouwen**
+   - Bouw de applicatie met:
+     ```
+     go build -o dklautomationgo .
+     ```
+
+3. **Configuratie**
+   - Maak een `.env` bestand aan op basis van `.env.example`
+   - Vul alle vereiste omgevingsvariabelen in
+
+4. **Applicatie starten**
+   - Start de applicatie met:
+     ```
+     ./dklautomationgo
+     ```
+
+### Docker deployment
+
+Voor deployment met Docker, volg deze stappen:
+
+1. **Docker Compose gebruiken**
+   - Zorg ervoor dat Docker en Docker Compose zijn geïnstalleerd
+   - Maak een `.env` bestand aan op basis van `.env.example`
+   - Start de applicatie met:
+     ```
+     docker-compose up -d
+     ```
+
+2. **Logs bekijken**
+   - Bekijk de logs met:
+     ```
+     docker-compose logs -f
+     ```
+
+3. **Applicatie stoppen**
+   - Stop de applicatie met:
+     ```
+     docker-compose down
+     ```
 
 ## Ontwikkelomgeving
 

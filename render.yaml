@@ -69,6 +69,10 @@ services:
         value: "true"
       - key: PASSWORD_REQUIRE_SPECIAL
         value: "true"
+      - key: GIN_MODE
+        value: "release"
+      - key: TZ
+        value: "Europe/Amsterdam"
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_KEY

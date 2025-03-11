@@ -27,8 +27,8 @@ FROM alpine:latest
 
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apk add --no-cache ca-certificates tzdata bash postgresql-client
+# Install runtime dependencies including nginx
+RUN apk add --no-cache ca-certificates tzdata bash postgresql-client nginx openssl
 
 # Copy binary and other necessary files from builder
 COPY --from=builder /app/dklautomationgo /app/
@@ -36,8 +36,12 @@ COPY --from=builder /app/migrate /app/
 COPY --from=builder /app/templates /app/templates
 COPY --from=builder /app/database/migrations /app/database/migrations
 
+# Copy Nginx configuration
+COPY nginx/conf.d/default.conf /etc/nginx/http.d/default.conf
+COPY nginx/www /var/www/html
+
 # Create scripts directory
-RUN mkdir -p /app/scripts
+RUN mkdir -p /app/scripts /etc/nginx/ssl
 
 # Create migrate script
 RUN echo '#!/bin/bash\n\
@@ -83,14 +87,41 @@ echo "Health check passed"\n\
 exit 0\n\
 ' > /app/scripts/healthcheck.sh
 
+# Create startup script
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+# Generate self-signed SSL certificate if not exists\n\
+if [ ! -f /etc/nginx/ssl/server.crt ]; then\n\
+    echo "Generating self-signed SSL certificate..."\n\
+    mkdir -p /etc/nginx/ssl\n\
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \\\n\
+        -keyout /etc/nginx/ssl/server.key -out /etc/nginx/ssl/server.crt \\\n\
+        -subj "/C=NL/ST=Noord-Holland/L=Amsterdam/O=De Koninklijke Loop/CN=localhost"\n\
+    chmod 600 /etc/nginx/ssl/server.key\n\
+fi\n\
+\n\
+# Start Nginx\n\
+echo "Starting Nginx..."\n\
+nginx -g "daemon off;" &\n\
+\n\
+# Run migrations\n\
+/app/scripts/migrate.sh\n\
+\n\
+# Start the application\n\
+echo "Starting application..."\n\
+/app/dklautomationgo\n\
+' > /app/scripts/start.sh
+
 # Make scripts executable
-RUN chmod +x /app/scripts/migrate.sh /app/scripts/healthcheck.sh
+RUN chmod +x /app/scripts/migrate.sh /app/scripts/healthcheck.sh /app/scripts/start.sh
 
 # Create non-root user
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 # Set ownership
-RUN chown -R appuser:appgroup /app
+RUN chown -R appuser:appgroup /app /var/www/html
+RUN chown -R appuser:appgroup /run/nginx /var/lib/nginx /var/log/nginx
 
 # Switch to non-root user
 USER appuser
@@ -98,8 +129,8 @@ USER appuser
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 CMD ["/app/scripts/healthcheck.sh"]
 
-# Expose port
-EXPOSE 8080
+# Expose ports
+EXPOSE 8080 80 443
 
-# Run the application
-CMD ["/app/dklautomationgo"] 
+# Run the application with Nginx
+CMD ["/app/scripts/start.sh"] 

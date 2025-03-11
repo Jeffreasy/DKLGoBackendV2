@@ -42,7 +42,6 @@ services:
       - TZ=Europe/Amsterdam
     volumes:
       - ./templates:/app/templates
-      - ./scripts:/app/scripts
     networks:
       - dkl-network
     healthcheck:
