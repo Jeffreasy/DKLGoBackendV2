@@ -1,0 +1,82 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dklautomationgo-app
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+    env_file:
+      - .env
+    environment:
+      - PORT=8080
+      - ALLOWED_ORIGINS=http://localhost:3000,https://dekoninklijkeloop.nl
+      - DEV_MODE=false
+      - SMTP_HOST=smtp.hostnet.nl
+      - SMTP_PORT=587
+      - SMTP_USER=${SMTP_USER:-info@dekoninklijkeloop.nl}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-your_password_here}
+      - SMTP_FROM=${SMTP_FROM:-info@dekoninklijkeloop.nl}
+      - INFO_EMAIL_PASSWORD=${INFO_EMAIL_PASSWORD:-your_password_here}
+      - INSCHRIJVING_EMAIL_PASSWORD=${INSCHRIJVING_EMAIL_PASSWORD:-your_password_here}
+      - NOREPLY_EMAIL_PASSWORD=${NOREPLY_EMAIL_PASSWORD:-your_password_here}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-info@dekoninklijkeloop.nl}
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=Bootje@12
+      - DB_NAME=dklautomationgo
+      - DB_SSLMODE=disable
+      - JWT_SECRET_KEY=your-secret-key
+      - JWT_ACCESS_TOKEN_EXPIRY=15m
+      - JWT_REFRESH_TOKEN_EXPIRY=7d
+      - PASSWORD_MIN_LENGTH=8
+      - PASSWORD_REQUIRE_UPPERCASE=true
+      - PASSWORD_REQUIRE_LOWERCASE=true
+      - PASSWORD_REQUIRE_NUMBER=true
+      - PASSWORD_REQUIRE_SPECIAL=true
+      - GIN_MODE=release
+      - TZ=Europe/Amsterdam
+    volumes:
+      - ./templates:/app/templates
+      - ./scripts:/app/scripts
+    networks:
+      - dkl-network
+    healthcheck:
+      test: ["CMD", "/app/scripts/healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    command: ["/bin/bash", "-c", "/app/scripts/migrate.sh && /app/dklautomationgo"]
+
+  db:
+    image: postgres:16-alpine
+    container_name: dklautomationgo-db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=Bootje@12
+      - POSTGRES_DB=dklautomationgo
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - dkl-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+networks:
+  dkl-network:
+    driver: bridge
+
+volumes:
+  postgres_data: 

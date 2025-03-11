@@ -6,8 +6,9 @@ import (
 	"dklautomationgo/models"
 	"fmt"
 	"log"
-	"os"
-	"strconv"
+	"net"
+	"strings"
+	"time"
 
 	"gopkg.in/gomail.v2"
 )
@@ -18,12 +19,12 @@ func (s *EmailService) SendContactEmail(data *models.ContactEmailData) error {
 	var recipient string
 
 	if data.ToAdmin {
-		templateName = "contact_admin"
+		templateName = "contact_admin_email.html"
 		subject = "Nieuw contactformulier ontvangen"
 		recipient = data.AdminEmail
 		log.Printf("Sending admin email to: %s using template: %s", recipient, templateName)
 	} else {
-		templateName = "contact_user"
+		templateName = "contact_email.html"
 		subject = "Bedankt voor je bericht"
 		recipient = data.Contact.Email
 		log.Printf("Sending user email to: %s using template: %s", recipient, templateName)
@@ -51,72 +52,164 @@ func (s *EmailService) SendAanmeldingEmail(data *models.AanmeldingEmailData) err
 	var recipient string
 
 	if data.ToAdmin {
-		templateName = "aanmelding_admin"
+		templateName = "aanmelding_admin_email.html"
 		subject = "Nieuwe aanmelding ontvangen"
 		recipient = data.AdminEmail
+		log.Printf("[SendAanmeldingEmail] Preparing admin email - Template: %s, Recipient: %s", templateName, recipient)
 	} else {
-		templateName = "aanmelding_user"
+		templateName = "aanmelding_email.html"
 		subject = "Bedankt voor je aanmelding"
 		recipient = data.Aanmelding.Email
+		log.Printf("[SendAanmeldingEmail] Preparing user email - Template: %s, Recipient: %s", templateName, recipient)
 	}
 
 	template := s.templates[templateName]
 	if template == nil {
+		log.Printf("[SendAanmeldingEmail] Template not found: %s", templateName)
 		return fmt.Errorf("template not found: %s", templateName)
 	}
+	log.Printf("[SendAanmeldingEmail] Found template: %s", templateName)
+
+	// Log template data for debugging
+	log.Printf("[SendAanmeldingEmail] Template data: ToAdmin=%v, Naam=%s, Email=%s, Rol=%s, Afstand=%s",
+		data.ToAdmin, data.Aanmelding.Naam, data.Aanmelding.Email, data.Aanmelding.Rol, data.Aanmelding.Afstand)
 
 	var body bytes.Buffer
 	if err := template.Execute(&body, data); err != nil {
+		log.Printf("[SendAanmeldingEmail] Failed to execute template: %v", err)
 		return fmt.Errorf("failed to execute template: %v", err)
 	}
+	log.Printf("[SendAanmeldingEmail] Successfully executed template, generated body length: %d", body.Len())
 
-	return s.sendEmail(recipient, subject, body.String())
+	if err := s.sendEmail(recipient, subject, body.String()); err != nil {
+		log.Printf("[SendAanmeldingEmail] Failed to send email: %v", err)
+		return fmt.Errorf("failed to send email: %v", err)
+	}
+	log.Printf("[SendAanmeldingEmail] Successfully sent email to %s", recipient)
+
+	return nil
 }
 
 func (s *EmailService) sendEmail(to, subject, body string) error {
-	log.Printf("Attempting to send email to: %s with subject: %s", to, subject)
+	log.Printf("[sendEmail] Starting email send process to: %s with subject: %s", to, subject)
+
+	// Check if we should simulate email delivery
+	if s.config.DevMode {
+		// In development mode, only send to allowed domains
+		allowedDomains := []string{
+			"dekoninklijkeloop.nl",
+			"localhost",
+			"127.0.0.1",
+		}
+
+		shouldSimulate := true
+		for _, domain := range allowedDomains {
+			if strings.HasSuffix(to, "@"+domain) {
+				shouldSimulate = false
+				break
+			}
+		}
+
+		if shouldSimulate {
+			log.Printf("[sendEmail] DEV MODE: Simulating email delivery to %s", to)
+			log.Printf("[sendEmail] DEV MODE: Email subject: %s", subject)
+			log.Printf("[sendEmail] DEV MODE: Email body length: %d bytes", len(body))
+			return nil
+		}
+	} else {
+		// In production mode, still simulate for obvious test domains
+		testDomains := []string{"@example.com", "@test.com", "@example.org"}
+		for _, domain := range testDomains {
+			if strings.HasSuffix(to, domain) {
+				log.Printf("[sendEmail] Detected test email address: %s. Simulating successful delivery.", to)
+				return nil
+			}
+		}
+	}
 
 	m := gomail.NewMessage()
-	fromEmail := os.Getenv("SMTP_FROM")
-	if fromEmail == "" {
-		fromEmail = "noreply@dekoninklijkeloop.nl"
+	// Use the same email address for From header as the SMTP authentication
+	emailConfig := s.config.Accounts["info"]
+	if emailConfig == nil {
+		log.Printf("[sendEmail] Email configuration not found for info account")
+		return fmt.Errorf("email configuration not found for info account")
 	}
-	m.SetHeader("From", fromEmail)
+
+	m.SetHeader("From", emailConfig.Email) // Use the authenticated email address
 	m.SetHeader("To", to)
 	m.SetHeader("Subject", subject)
 	m.SetBody("text/html", body)
 
-	smtpHost := os.Getenv("SMTP_HOST")
-	smtpPortStr := os.Getenv("SMTP_PORT")
-	if smtpPortStr == "" {
-		smtpPortStr = "587" // Default port for TLS
-	}
-	smtpUsername := os.Getenv("SMTP_USER")
-	smtpPassword := os.Getenv("SMTP_PASSWORD")
+	log.Printf("[sendEmail] Using SMTP Configuration - Host: %s, Port: %d, Username: %s, Password length: %d",
+		emailConfig.SMTPHost, emailConfig.SMTPPort, emailConfig.Email, len(emailConfig.Password))
 
-	log.Printf("SMTP Configuration - Host: %s, Port: %s, Username: %s, From: %s", smtpHost, smtpPortStr, smtpUsername, fromEmail)
+	d := gomail.NewDialer(emailConfig.SMTPHost, emailConfig.SMTPPort, emailConfig.Email, emailConfig.Password)
 
-	if smtpHost == "" || smtpUsername == "" || smtpPassword == "" {
-		return fmt.Errorf("missing SMTP configuration - Host: %s, Username: %s", smtpHost, smtpUsername)
-	}
-
-	smtpPort, err := strconv.Atoi(smtpPortStr)
-	if err != nil {
-		log.Printf("Invalid SMTP port number: %v, using default 587", err)
-		smtpPort = 587
+	// Configure TLS based on port
+	if emailConfig.SMTPPort == 465 {
+		// Port 465 uses implicit SSL/TLS
+		d.SSL = true
+	} else {
+		// Port 587 uses STARTTLS
+		d.SSL = false
 	}
 
-	d := gomail.NewDialer(smtpHost, smtpPort, smtpUsername, smtpPassword)
+	// TLS configuration
 	d.TLSConfig = &tls.Config{
-		ServerName: smtpHost,
+		ServerName:         emailConfig.SMTPHost,
+		InsecureSkipVerify: true,             // Allow invalid certificates for testing
+		MinVersion:         tls.VersionTLS10, // Allow older TLS versions
 	}
 
-	log.Printf("Attempting to connect to SMTP server: %s:%d with TLS", smtpHost, smtpPort)
-	if err := d.DialAndSend(m); err != nil {
-		log.Printf("Failed to send email: %v", err)
-		return fmt.Errorf("failed to send email: %v", err)
+	// Add retry logic for transient errors
+	maxRetries := 3
+	for i := 0; i < maxRetries; i++ {
+		var connectionType string
+		if d.SSL {
+			connectionType = "SSL"
+		} else {
+			connectionType = "STARTTLS"
+		}
+
+		log.Printf("[sendEmail] Attempt %d/%d: Connecting to SMTP server %s:%d with %s...",
+			i+1, maxRetries, emailConfig.SMTPHost, emailConfig.SMTPPort, connectionType)
+
+		if err := d.DialAndSend(m); err != nil {
+			log.Printf("[sendEmail] Attempt %d/%d failed: %v", i+1, maxRetries, err)
+
+			// Check if it's a network error
+			if netErr, ok := err.(net.Error); ok {
+				log.Printf("[sendEmail] Network error details - Type: %T, Timeout: %v, Temporary: %v",
+					netErr, netErr.Timeout(), netErr.Temporary())
+			}
+
+			// Check if it's a TLS error
+			if tlsErr, ok := err.(tls.RecordHeaderError); ok {
+				log.Printf("[sendEmail] TLS error details: %v", tlsErr)
+			}
+
+			// Check if it's an authentication error
+			if strings.Contains(err.Error(), "authentication") {
+				log.Printf("[sendEmail] Authentication error detected. Please verify SMTP credentials.")
+			}
+
+			if i == maxRetries-1 {
+				return fmt.Errorf("failed to send email after %d attempts: %v", maxRetries, err)
+			}
+
+			// Exponential backoff with a maximum of 5 seconds
+			backoff := time.Duration(i+1) * 2 * time.Second
+			if backoff > 5*time.Second {
+				backoff = 5 * time.Second
+			}
+			log.Printf("[sendEmail] Waiting %v before next attempt", backoff)
+			time.Sleep(backoff)
+			continue
+		}
+
+		log.Printf("[sendEmail] Successfully sent email to: %s", to)
+		return nil
 	}
 
-	log.Printf("Successfully sent email to: %s", to)
-	return nil
+	return fmt.Errorf("failed to send email after %d retries", maxRetries)
 }

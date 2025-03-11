@@ -1,114 +1,144 @@
 package email
 
 import (
+	"bytes"
+	"regexp"
 	"strings"
-
-	"golang.org/x/text/encoding"
-	"golang.org/x/text/encoding/charmap"
-	"golang.org/x/text/encoding/japanese"
-	"golang.org/x/text/encoding/korean"
-	"golang.org/x/text/encoding/simplifiedchinese"
-	"golang.org/x/text/encoding/traditionalchinese"
-	"golang.org/x/text/encoding/unicode"
 )
 
-func (s *EmailService) extractCharset(contentType string) string {
-	if strings.Contains(strings.ToLower(contentType), "charset") {
-		parts := strings.Split(contentType, ";")
-		for _, part := range parts {
-			part = strings.TrimSpace(part)
-			if strings.HasPrefix(strings.ToLower(part), "charset=") {
-				charset := strings.TrimPrefix(part, "charset=")
-				charset = strings.Trim(charset, `"'`)
-				return charset
-			}
+var (
+	// Voorgecompileerde regex patterns voor betere performance
+	scriptStyleRegex = regexp.MustCompile(`(?i)<(script|style)[^>]*>[\s\S]*?</($1)>`)
+	commentRegex     = regexp.MustCompile(`<!--[\s\S]*?-->`)
+	tagRegex         = regexp.MustCompile(`<[^>]*>`)
+	entityRegex      = regexp.MustCompile(`&[#a-zA-Z0-9]+;`)
+	whitespaceRegex  = regexp.MustCompile(`[ \t]+`)
+
+	// Common HTML entities map
+	htmlEntities = map[string]string{
+		"&nbsp;":  " ",
+		"&amp;":   "&",
+		"&lt;":    "<",
+		"&gt;":    ">",
+		"&quot;":  "\"",
+		"&apos;":  "'",
+		"&cent;":  "¢",
+		"&pound;": "£",
+		"&euro;":  "€",
+		"&copy;":  "©",
+		"&reg;":   "®",
+		"&trade;": "™",
+		"&#8216;": "'",
+		"&#8217;": "'",
+		"&#8220;": `"`,
+		"&#8221;": `"`,
+		"&#8230;": "...",
+		"&bull;":  "•",
+		"&ndash;": "–",
+		"&mdash;": "—",
+		"&lsquo;": "'",
+		"&rsquo;": "'",
+		"&ldquo;": `"`,
+		"&rdquo;": `"`,
+	}
+
+	// Semantic replacements voor HTML elementen
+	blockElements = map[string]string{
+		"</p>":       "\n\n",
+		"</div>":     "\n",
+		"</tr>":      "\n",
+		"</table>":   "\n\n",
+		"</h1>":      "\n\n",
+		"</h2>":      "\n\n",
+		"</h3>":      "\n\n",
+		"</h4>":      "\n\n",
+		"</h5>":      "\n\n",
+		"</h6>":      "\n\n",
+		"</pre>":     "\n\n",
+		"</form>":    "\n\n",
+		"</ul>":      "\n\n",
+		"</ol>":      "\n\n",
+		"</li>":      "\n",
+		"<br>":       "\n",
+		"<br/>":      "\n",
+		"<br />":     "\n",
+		"</article>": "\n\n",
+		"</section>": "\n\n",
+	}
+
+	// Inline element replacements voor opmaak behoud
+	inlineElements = map[string]string{
+		"</em>":     "_", // Markering voor emphasis
+		"</i>":      "_",
+		"</b>":      "*", // Markering voor bold
+		"</strong>": "*",
+	}
+)
+
+// ProcessHTML verwerkt HTML content naar leesbare platte tekst met behoud van basis opmaak
+func (s *EmailService) ProcessHTML(html string) string {
+	if strings.TrimSpace(html) == "" {
+		return ""
+	}
+
+	// Maximum grootte check om oneindige loops te voorkomen
+	if len(html) > 10*1024*1024 { // 10MB limit
+		html = html[:10*1024*1024]
+	}
+
+	var buf bytes.Buffer
+	buf.Grow(len(html)) // Pre-allocate buffer
+
+	// 1. Verwijder scripts, styles en comments
+	html = scriptStyleRegex.ReplaceAllString(html, "")
+	html = commentRegex.ReplaceAllString(html, "")
+
+	// 2. Vervang block elements met newlines
+	for tag, replacement := range blockElements {
+		html = strings.ReplaceAll(html, strings.ToLower(tag), replacement)
+		html = strings.ReplaceAll(html, strings.ToUpper(tag), replacement)
+	}
+
+	// 3. Vervang inline elements met hun markeringen
+	for tag, replacement := range inlineElements {
+		html = strings.ReplaceAll(html, strings.ToLower(tag), replacement)
+		html = strings.ReplaceAll(html, strings.ToUpper(tag), replacement)
+	}
+
+	// 4. Verwijder alle overige HTML tags, maar behoud hun inhoud
+	html = tagRegex.ReplaceAllString(html, "")
+
+	// 5. Decode HTML entities
+	html = entityRegex.ReplaceAllStringFunc(html, func(entity string) string {
+		if replacement, ok := htmlEntities[entity]; ok {
+			return replacement
 		}
-	}
-	return ""
-}
+		return entity
+	})
 
-func (s *EmailService) decodeCharset(content, charset string) (string, error) {
-	charset = strings.ToLower(charset)
-	var decoder *encoding.Decoder
+	// 6. Clean up whitespace met behoud van opmaak
+	lines := strings.Split(html, "\n")
+	var lastLineWasEmpty bool
 
-	switch charset {
-	case "utf-8", "us-ascii":
-		return content, nil
-	case "iso-8859-1":
-		decoder = charmap.ISO8859_1.NewDecoder()
-	case "iso-8859-2":
-		decoder = charmap.ISO8859_2.NewDecoder()
-	case "iso-8859-3":
-		decoder = charmap.ISO8859_3.NewDecoder()
-	case "iso-8859-4":
-		decoder = charmap.ISO8859_4.NewDecoder()
-	case "iso-8859-5":
-		decoder = charmap.ISO8859_5.NewDecoder()
-	case "iso-8859-6":
-		decoder = charmap.ISO8859_6.NewDecoder()
-	case "iso-8859-7":
-		decoder = charmap.ISO8859_7.NewDecoder()
-	case "iso-8859-8":
-		decoder = charmap.ISO8859_8.NewDecoder()
-	case "iso-8859-9":
-		decoder = charmap.ISO8859_9.NewDecoder()
-	case "iso-8859-10":
-		decoder = charmap.ISO8859_10.NewDecoder()
-	case "iso-8859-13":
-		decoder = charmap.ISO8859_13.NewDecoder()
-	case "iso-8859-14":
-		decoder = charmap.ISO8859_14.NewDecoder()
-	case "iso-8859-15":
-		decoder = charmap.ISO8859_15.NewDecoder()
-	case "iso-8859-16":
-		decoder = charmap.ISO8859_16.NewDecoder()
-	case "windows-1250":
-		decoder = charmap.Windows1250.NewDecoder()
-	case "windows-1251":
-		decoder = charmap.Windows1251.NewDecoder()
-	case "windows-1252":
-		decoder = charmap.Windows1252.NewDecoder()
-	case "windows-1253":
-		decoder = charmap.Windows1253.NewDecoder()
-	case "windows-1254":
-		decoder = charmap.Windows1254.NewDecoder()
-	case "windows-1255":
-		decoder = charmap.Windows1255.NewDecoder()
-	case "windows-1256":
-		decoder = charmap.Windows1256.NewDecoder()
-	case "windows-1257":
-		decoder = charmap.Windows1257.NewDecoder()
-	case "windows-1258":
-		decoder = charmap.Windows1258.NewDecoder()
-	case "koi8r":
-		decoder = charmap.KOI8R.NewDecoder()
-	case "koi8u":
-		decoder = charmap.KOI8U.NewDecoder()
-	case "gbk", "gb2312":
-		decoder = simplifiedchinese.GBK.NewDecoder()
-	case "gb18030":
-		decoder = simplifiedchinese.GB18030.NewDecoder()
-	case "big5":
-		decoder = traditionalchinese.Big5.NewDecoder()
-	case "euc-jp":
-		decoder = japanese.EUCJP.NewDecoder()
-	case "iso-2022-jp":
-		decoder = japanese.ISO2022JP.NewDecoder()
-	case "shift-jis":
-		decoder = japanese.ShiftJIS.NewDecoder()
-	case "euc-kr":
-		decoder = korean.EUCKR.NewDecoder()
-	case "utf-16be":
-		decoder = unicode.UTF16(unicode.BigEndian, unicode.IgnoreBOM).NewDecoder()
-	case "utf-16le":
-		decoder = unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM).NewDecoder()
-	default:
-		return content, nil
+	for i, line := range lines {
+		line = whitespaceRegex.ReplaceAllString(strings.TrimSpace(line), " ")
+
+		if line == "" {
+			if !lastLineWasEmpty {
+				if i > 0 {
+					buf.WriteString("\n")
+				}
+				lastLineWasEmpty = true
+			}
+			continue
+		}
+
+		if i > 0 && !lastLineWasEmpty {
+			buf.WriteString(" ")
+		}
+		buf.WriteString(line)
+		lastLineWasEmpty = false
 	}
 
-	result, err := decoder.String(content)
-	if err != nil {
-		return content, err
-	}
-	return result, nil
+	return buf.String()
 }

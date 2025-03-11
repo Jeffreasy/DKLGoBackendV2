@@ -13,13 +13,6 @@ import (
 	"github.com/emersion/go-imap/client"
 )
 
-// AccountCache houdt de cache bij voor één account
-type AccountCache struct {
-	emails     []*models.Email
-	lastFetch  time.Time
-	cacheMutex sync.RWMutex
-}
-
 func (s *EmailService) FetchEmails(options *models.EmailFetchOptions) ([]*models.Email, error) {
 	var allEmails []*models.Email
 	var mu sync.Mutex
@@ -55,7 +48,7 @@ func (s *EmailService) FetchEmails(options *models.EmailFetchOptions) ([]*models
 
 			emails, err := s.fetchEmailsFromAccount(ctx, accName, cfg, options)
 			if err != nil {
-				log.Printf("[ERROR] Account %s: Failed to fetch emails: %v", accName, err)
+				log.Printf("[ERROR] %s: %v", accName, err)
 				errChan <- fmt.Errorf("account %s: %w", accName, err)
 				return
 			}
@@ -132,23 +125,18 @@ func (s *EmailService) filterEmails(emails []*models.Email, options *models.Emai
 }
 
 func (s *EmailService) fetchEmailsFromAccount(ctx context.Context, accountName string, config *EmailConfig, options *models.EmailFetchOptions) ([]*models.Email, error) {
-	log.Printf("[EMAIL] %s: Starting fetch", accountName)
-
-	// Maak IMAP client met context en verbeterde TLS configuratie
-	tlsConfig := &tls.Config{
+	// Connect to IMAP server
+	c, err := client.DialTLS(fmt.Sprintf("%s:%d", config.IMAPHost, config.IMAPPort), &tls.Config{
 		ServerName:         config.IMAPHost,
 		InsecureSkipVerify: true,
 		MinVersion:         tls.VersionTLS12,
-	}
-
-	// Connect to IMAP server
-	c, err := client.DialTLS(fmt.Sprintf("%s:%d", config.IMAPHost, config.IMAPPort), tlsConfig)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("IMAP connection failed: %w", err)
 	}
 	defer func() {
 		if err := c.Logout(); err != nil {
-			log.Printf("[EMAIL] %s: Logout failed: %v", accountName, err)
+			log.Printf("[ERROR] %s: Logout failed: %v", accountName, err)
 		}
 	}()
 
@@ -171,7 +159,6 @@ func (s *EmailService) fetchEmailsFromAccount(ctx context.Context, accountName s
 	}
 
 	if mbox.Messages == 0 {
-		log.Printf("[EMAIL] %s: Inbox empty", accountName)
 		return []*models.Email{}, nil
 	}
 
@@ -190,25 +177,22 @@ func (s *EmailService) fetchEmailsFromAccount(ctx context.Context, accountName s
 		to = to - uint32(options.Offset)
 	}
 
-	log.Printf("[EMAIL] %s: Fetching messages %d-%d of %d", accountName, from, to, mbox.Messages)
+	log.Printf("[INFO] %s: Fetching %d messages", accountName, to-from+1)
 
 	seqSet := new(imap.SeqSet)
 	seqSet.AddRange(from, to)
-
-	// Define fetch items
-	items := []imap.FetchItem{
-		imap.FetchEnvelope,
-		imap.FetchFlags,
-		imap.FetchBody,
-		imap.FetchBodyStructure,
-		"BODY[]",
-	}
 
 	messages := make(chan *imap.Message, 100)
 	done := make(chan error, 1)
 
 	go func() {
-		done <- c.Fetch(seqSet, items, messages)
+		done <- c.Fetch(seqSet, []imap.FetchItem{
+			imap.FetchEnvelope,
+			imap.FetchFlags,
+			imap.FetchBody,
+			imap.FetchBodyStructure,
+			"BODY[]",
+		}, messages)
 	}()
 
 	var emails []*models.Email
@@ -234,8 +218,9 @@ func (s *EmailService) fetchEmailsFromAccount(ctx context.Context, accountName s
 		return nil, fmt.Errorf("IMAP fetch failed: %w", err)
 	}
 
-	log.Printf("[EMAIL] %s: Completed. Processed %d messages (%d errors)",
-		accountName, processedCount, errorCount)
+	if errorCount > 0 {
+		log.Printf("[WARN] %s: %d messages failed to process", accountName, errorCount)
+	}
 
 	return emails, nil
 }

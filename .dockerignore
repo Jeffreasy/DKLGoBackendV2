@@ -1,0 +1,46 @@
+# Git
+.git
+.gitignore
+
+# Docker
+.docker
+.dockerignore
+docker-compose.yml
+Dockerfile
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+/bin
+/tmp
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+
+# Documentation
+README.md
+LICENSE
+*.md
+
+# Test files
+test.http
+
+# Binaries
+migrate.exe 

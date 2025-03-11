@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>De Koninklijke Loop API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #2980b9;
+        }
+        code {
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            padding: 2px 5px;
+            font-family: monospace;
+        }
+        pre {
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            padding: 10px;
+            overflow-x: auto;
+        }
+        .endpoint {
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-left: 3px solid #3498db;
+        }
+        .method {
+            font-weight: bold;
+            color: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+    <h1>De Koninklijke Loop API</h1>
+    <p>Welkom bij de API van De Koninklijke Loop. Deze pagina biedt een overzicht van de beschikbare endpoints.</p>
+
+    <h2>Publieke Endpoints</h2>
+    
+    <div class="endpoint">
+        <p><span class="method">POST</span> <code>/api/contact</code></p>
+        <p>Verwerk een contactformulier inzending.</p>
+    </div>
+    
+    <div class="endpoint">
+        <p><span class="method">POST</span> <code>/api/aanmelding</code></p>
+        <p>Verwerk een vrijwilliger aanmelding.</p>
+    </div>
+
+    <h2>Authenticatie Endpoints</h2>
+    
+    <div class="endpoint">
+        <p><span class="method">POST</span> <code>/api/auth/login</code></p>
+        <p>Authenticeer een gebruiker en ontvang toegangstokens.</p>
+    </div>
+    
+    <div class="endpoint">
+        <p><span class="method">POST</span> <code>/api/auth/refresh-token</code></p>
+        <p>Vernieuw een verlopen toegangstoken met een refresh token.</p>
+    </div>
+    
+    <div class="endpoint">
+        <p><span class="method">POST</span> <code>/api/auth/forgot-password</code></p>
+        <p>Start het wachtwoord reset proces.</p>
+    </div>
+    
+    <div class="endpoint">
+        <p><span class="method">POST</span> <code>/api/auth/reset-password</code></p>
+        <p>Reset een wachtwoord met een reset token.</p>
+    </div>
+
+    <h2>Beveiligde Endpoints (Admin)</h2>
+    
+    <p>Deze endpoints vereisen authenticatie en admin rechten.</p>
+    
+    <div class="endpoint">
+        <p><span class="method">GET</span> <code>/api/emails</code></p>
+        <p>Haal alle emails op.</p>
+    </div>
+    
+    <div class="endpoint">
+        <p><span class="method">GET</span> <code>/api/emails/stats</code></p>
+        <p>Haal email statistieken op.</p>
+    </div>
+    
+    <div class="endpoint">
+        <p><span class="method">PUT</span> <code>/api/emails/:id/read</code></p>
+        <p>Markeer een email als gelezen.</p>
+    </div>
+    
+    <div class="endpoint">
+        <p><span class="method">GET</span> <code>/api/contacts</code></p>
+        <p>Haal alle contactformulieren op.</p>
+    </div>
+    
+    <div class="endpoint">
+        <p><span class="method">PUT</span> <code>/api/contacts/:id/status</code></p>
+        <p>Werk de status van een contactformulier bij.</p>
+    </div>
+    
+    <div class="endpoint">
+        <p><span class="method">GET</span> <code>/api/aanmeldingen</code></p>
+        <p>Haal alle aanmeldingen op.</p>
+    </div>
+    
+    <div class="endpoint">
+        <p><span class="method">GET</span> <code>/api/aanmeldingen/stats</code></p>
+        <p>Haal aanmelding statistieken op.</p>
+    </div>
+    
+    <div class="endpoint">
+        <p><span class="method">GET</span> <code>/api/aanmeldingen/:id</code></p>
+        <p>Haal een specifieke aanmelding op.</p>
+    </div>
+
+    <h2>Status</h2>
+    <p>API Status: <a href="/health">Controleer Status</a></p>
+
+    <footer>
+        <p>&copy; 2025 De Koninklijke Loop. Alle rechten voorbehouden.</p>
+    </footer>
+</body>
+</html> 

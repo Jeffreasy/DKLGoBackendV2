@@ -1,11 +1,14 @@
 package email
 
 import (
-	"fmt"
 	"strings"
 )
 
-func (s *EmailService) extractFormFields(content string) map[string]string {
+func (s *EmailService) ProcessContactForm(content string) (map[string]string, error) {
+	// Process HTML content first
+	content = s.ProcessHTML(content)
+
+	// Extract form fields
 	fields := make(map[string]string)
 	lines := strings.Split(content, "\n")
 
@@ -15,56 +18,54 @@ func (s *EmailService) extractFormFields(content string) map[string]string {
 			continue
 		}
 
-		// Check for form field patterns
-		patterns := []string{" : ", ": ", ":", " :", " = ", "="}
-		for _, pattern := range patterns {
-			if parts := strings.SplitN(line, pattern, 2); len(parts) == 2 {
-				key := strings.TrimSpace(parts[0])
-				value := strings.TrimSpace(parts[1])
-				if key != "" && value != "" {
-					fields[key] = value
-					break
-				}
-			}
+		// Try different separators
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			parts = strings.SplitN(line, "=", 2)
+		}
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		if key != "" && value != "" {
+			fields[key] = value
 		}
 	}
 
-	return fields
+	return fields, nil
 }
 
-func (s *EmailService) formatFormFields(fields map[string]string) string {
-	var formattedLines []string
+func (s *EmailService) ExtractFormData(content string) (map[string]string, error) {
+	// Clean HTML first
+	content = s.ProcessHTML(content)
 
-	// Define field order for better readability
-	fieldOrder := []string{
-		"Naam",
-		"E-mail",
-		"Telefoonnummer",
-		"Geboortedatum",
-		"Geslacht",
-		"Adres",
-		"Postcode",
-		"Woonplaats",
-		"Afstand",
-		"Vereniging",
-		"Inschrijving_voor",
-		"Betaalmethode",
-		"lange_tekst",
-		"Heb_je_een_vraag_of_opmerking_neem_dan_contact_op_met_ons",
-	}
+	// Extract form fields
+	fields := make(map[string]string)
+	lines := strings.Split(content, "\n")
 
-	// First add fields in the preferred order
-	for _, key := range fieldOrder {
-		if value, exists := fields[key]; exists {
-			formattedLines = append(formattedLines, fmt.Sprintf("%s : %s", key, value))
-			delete(fields, key)
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Try different separators
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			parts = strings.SplitN(line, "=", 2)
+		}
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		if key != "" && value != "" {
+			fields[key] = value
 		}
 	}
 
-	// Then add any remaining fields
-	for key, value := range fields {
-		formattedLines = append(formattedLines, fmt.Sprintf("%s : %s", key, value))
-	}
-
-	return strings.Join(formattedLines, "\n")
+	return fields, nil
 }

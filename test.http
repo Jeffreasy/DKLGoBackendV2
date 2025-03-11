@@ -15,19 +15,16 @@ Content-Type: application/json
 }
 
 ### Test Aanmelding Email
-POST http://localhost:8080/api/aanmelding-email
+POST http://localhost:8080/api/aanmelding
 Content-Type: application/json
 
 {
-    "id": "26ea058b-2608-49d0-862a-611e98d7dc61",
     "naam": "Janny van de Wall",
     "email": "test@example.com",
-    "telefoon": null,
+    "telefoon": "0612345678",
     "rol": "Deelnemer",
     "afstand": "10 KM",
     "ondersteuning": "Nee",
     "bijzonderheden": "",
-    "terms": true,
-    "email_verzonden": false,
-    "email_verzonden_op": null
+    "terms": true
 } 
