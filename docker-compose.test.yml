@@ -1,0 +1,16 @@
+services:
+  test-db:
+    image: postgres:16-alpine
+    container_name: dklautomationgo-test-db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=Bootje@12
+      - POSTGRES_DB=dklautomationgo_test
+    ports:
+      - "5433:5432"  # Gebruik een andere poort om conflicten te voorkomen
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s 

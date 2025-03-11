@@ -2,6 +2,7 @@ package email
 
 import (
 	"crypto/tls"
+	"dklautomationgo/models"
 	"fmt"
 	"html/template"
 	"log"
@@ -12,6 +13,15 @@ import (
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
 )
+
+// IEmailService definieert de interface voor email services
+type IEmailService interface {
+	SendAanmeldingEmail(data *models.AanmeldingEmailData) error
+	SendContactEmail(data *models.ContactEmailData) error
+}
+
+// Controleer of EmailService de IEmailService interface implementeert
+var _ IEmailService = (*EmailService)(nil)
 
 type EmailService struct {
 	templates     map[string]*template.Template

@@ -1,17 +1,20 @@
 package main
 
 import (
-	"dklautomationgo/auth/handlers"
+	authHandlers "dklautomationgo/auth/handlers"
 	"dklautomationgo/auth/middleware"
 	"dklautomationgo/auth/service"
 	"dklautomationgo/database"
 	"dklautomationgo/database/repository"
-	emailHandlers "dklautomationgo/handlers"
+	"dklautomationgo/handlers"
 	"dklautomationgo/models"
+	"dklautomationgo/services"
 	"dklautomationgo/services/email"
+	"html/template"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -41,24 +44,38 @@ func main() {
 	aanmeldingRepo := repository.NewAanmeldingRepository(db)
 	userRepo := repository.NewUserRepository(db)
 
+	// Load email templates
+	templatesDir := "templates"
+	templates := make(map[string]*template.Template)
+	templateFiles, err := filepath.Glob(filepath.Join(templatesDir, "*.html"))
+	if err != nil {
+		log.Fatalf("Failed to find template files: %v", err)
+	}
+	for _, file := range templateFiles {
+		tmpl, err := template.ParseFiles(file)
+		if err != nil {
+			log.Fatalf("Failed to parse template %s: %v", file, err)
+		}
+		templates[filepath.Base(file)] = tmpl
+	}
+
 	// Initialize services
 	emailService, err := email.NewEmailService()
 	if err != nil {
 		log.Fatalf("Failed to initialize email service: %v", err)
 	}
-
-	// Initialize auth services
 	tokenService := service.NewTokenService()
 	authService := service.NewAuthService(userRepo, tokenService)
+	aanmeldingService := services.NewAanmeldingService(aanmeldingRepo, emailService)
 
-	// Initialize auth middleware
+	// Initialize middleware
 	authMiddleware := middleware.NewAuthMiddleware(tokenService, userRepo)
 
 	// Initialize handlers
-	emailHandler := emailHandlers.NewEmailHandler(emailService)
-	contactHandler := emailHandlers.NewContactHandler(emailService, contactRepo)
-	aanmeldingHandler := emailHandlers.NewAanmeldingHandler(emailService, aanmeldingRepo)
-	authHandler := handlers.NewAuthHandler(authService, authMiddleware)
+	emailHandler := handlers.NewEmailHandler(emailService)
+	contactHandler := handlers.NewContactHandler(emailService, contactRepo)
+	aanmeldingHandler := handlers.NewAanmeldingHandler(aanmeldingService)
+	authHandler := authHandlers.NewAuthHandler(authService, authMiddleware)
 
 	// Setup Gin
 	r := gin.Default()
@@ -140,7 +157,7 @@ func main() {
 		// Aanmelding routes - gedeeltelijk beschermd
 		aanmeldingen := api.Group("/aanmeldingen")
 		{
-			aanmeldingen.POST("", aanmeldingHandler.HandleAanmeldingEmail) // Publiek
+			aanmeldingen.POST("", aanmeldingHandler.CreateAanmelding) // Publiek
 
 			// Beschermde routes
 			aanmeldingenAdmin := aanmeldingen.Group("")
@@ -148,13 +165,14 @@ func main() {
 			aanmeldingenAdmin.Use(authMiddleware.RequireRole(models.RoleBeheerder, models.RoleAdmin))
 			{
 				aanmeldingenAdmin.GET("", aanmeldingHandler.GetAanmeldingen)
-				aanmeldingenAdmin.GET("/stats", aanmeldingHandler.GetAanmeldingStats)
 				aanmeldingenAdmin.GET("/:id", aanmeldingHandler.GetAanmeldingByID)
+				aanmeldingenAdmin.PUT("/:id", aanmeldingHandler.UpdateAanmelding)
+				aanmeldingenAdmin.DELETE("/:id", aanmeldingHandler.DeleteAanmelding)
 			}
 		}
 
 		// Backwards compatibility
-		api.POST("/aanmelding", aanmeldingHandler.HandleAanmeldingEmail)
+		api.POST("/aanmelding", aanmeldingHandler.CreateAanmelding)
 	}
 
 	// Get port from environment variable or use default

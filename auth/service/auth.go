@@ -429,7 +429,7 @@ func (s *AuthService) AdminChangePassword(userID uuid.UUID, adminID uuid.UUID, n
 }
 
 // GetUserRepository geeft de user repository terug
-func (s *AuthService) GetUserRepository() *repository.UserRepository {
+func (s *AuthService) GetUserRepository() interface{} {
 	return s.userRepo
 }
 

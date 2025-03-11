@@ -13,6 +13,7 @@
 10. [Deployment](#deployment)
 11. [Ontwikkelomgeving](#ontwikkelomgeving)
 12. [Troubleshooting](#troubleshooting)
+13. [Testen](#testen)
 
 ## Projectoverzicht
 
@@ -439,6 +440,110 @@ Database migraties worden automatisch uitgevoerd bij het starten van de containe
 .\scripts\migrate.ps1 up
 ```
 
+## Testen
+
+De applicatie bevat verschillende soorten tests om de functionaliteit te valideren:
+
+### Unit Tests
+
+Unit tests testen individuele componenten in isolatie, zonder afhankelijkheid van externe systemen zoals de database. Deze tests zijn snel en betrouwbaar.
+
+#### Beschikbare Unit Tests
+
+- **Services Tests**: Testen voor de business logica in de services laag
+- **Handlers Tests**: Testen voor de API endpoints
+- **Auth Service Tests**: Testen voor de authenticatie service
+- **Auth Handlers Tests**: Testen voor de authenticatie endpoints
+
+#### Unit Tests Uitvoeren
+
+Je kunt alle unit tests uitvoeren met het volgende commando:
+
+```powershell
+.\scripts\run_unit_tests.ps1
+```
+
+Of individuele test packages uitvoeren:
+
+```bash
+go test ./services -v
+go test ./handlers -v
+go test ./auth/service -v
+go test ./auth/handlers -v
+```
+
+### Integratie Tests
+
+Integratie tests testen de interactie tussen verschillende componenten, inclusief de database. Deze tests vereisen een testdatabase.
+
+#### Testdatabase Setup
+
+Voordat je integratie tests kunt uitvoeren, moet je een testdatabase aanmaken:
+
+```powershell
+.\scripts\setup_test_db.ps1
+```
+
+Dit script:
+1. Controleert of Docker draait
+2. Controleert of de database container actief is
+3. Maakt een testdatabase aan (`dklautomationgo_test`)
+4. Stelt de juiste omgevingsvariabelen in voor de tests
+
+#### Integratie Tests Uitvoeren
+
+Na het opzetten van de testdatabase kun je de integratie tests uitvoeren:
+
+```bash
+go test ./database/repository -v
+go test ./tests/integration -v
+```
+
+**Opmerking**: Voor het uitvoeren van integratie tests moet de database container draaien en toegankelijk zijn.
+
+### Mocks
+
+Voor unit tests worden mock implementaties gebruikt van repositories en services:
+
+- `tests/mocks/aanmelding_repository.go`: Mock voor de aanmelding repository
+- `tests/mocks/aanmelding_service.go`: Mock voor de aanmelding service
+- `tests/mocks/auth_middleware.go`: Mock voor de authenticatie middleware
+- `tests/mocks/auth_service.go`: Mock voor de authenticatie service
+- `tests/mocks/email_service.go`: Mock voor de email service
+
+### Test Fixtures
+
+Test fixtures bevatten testdata die wordt gebruikt in de tests:
+
+- `tests/fixtures/aanmeldingen.go`: Testdata voor aanmeldingen
+- `tests/fixtures/users.go`: Testdata voor gebruikers
+
+### Troubleshooting Tests
+
+#### Database Connectie Problemen
+
+Als je problemen ondervindt met de database connectie tijdens het testen:
+
+1. Controleer of de Docker container draait: `docker ps`
+2. Controleer of de testdatabase bestaat: `docker exec dklautomationgo-db psql -U postgres -c "\l"`
+3. Controleer de omgevingsvariabelen: 
+   ```powershell
+   echo $env:TEST_DB_HOST
+   echo $env:TEST_DB_PORT
+   echo $env:TEST_DB_USER
+   echo $env:TEST_DB_PASSWORD
+   echo $env:TEST_DB_NAME
+   ```
+
+#### Testdatabase Opnieuw Aanmaken
+
+Als je de testdatabase volledig opnieuw wilt aanmaken:
+
+```powershell
+docker exec -it dklautomationgo-db psql -U postgres -c "DROP DATABASE IF EXISTS dklautomationgo_test;"
+docker exec -it dklautomationgo-db psql -U postgres -c "CREATE DATABASE dklautomationgo_test;"
+```
+
 ## Troubleshooting
 
 ### Bekende Problemen
@@ -458,8 +563,24 @@ Database migraties worden automatisch uitgevoerd bij het starten van de containe
   - Geldige waarden voor `afstand`: "2.5 KM", "5 KM", "10 KM", "15 KM", "Halve marathon"
 
 #### 4. Docker Script Problemen
-- **Symptoom**: Foutmelding "cannot execute: required file not found"
-- **Oplossing**: Zorg ervoor dat de scripts uitvoerbaar zijn (`chmod +x`) en correct zijn gekopieerd naar de container
+- **Symptoom**: Foutmelding "cannot execute: required file not found" voor `/app/scripts/migrate.sh`
+- **Oplossing**: 
+  - Controleer of de scripts uitvoerbaar zijn (`chmod +x`) en correct zijn gekopieerd naar de container
+  - Als het probleem aanhoudt, pas de `docker-compose.yml` aan om de migrate.sh aanroep te verwijderen:
+    ```yaml
+    command: ["/bin/bash", "-c", "/app/dklautomationgo"]
+    ```
+  - Alternatief: voer de migraties handmatig uit na het starten van de container:
+    ```powershell
+    docker exec dklautomationgo-app /app/scripts/migrate.sh
+    ```
+
+#### 5. Testdatabase Problemen
+- **Symptoom**: Foutmelding "database dklautomationgo_test does not exist" tijdens het uitvoeren van tests
+- **Oplossing**: Maak de testdatabase aan met het script `.\scripts\setup_test_db.ps1` of handmatig:
+  ```powershell
+  docker exec -it dklautomationgo-db psql -U postgres -c "CREATE DATABASE dklautomationgo_test;"
+  ```
 
 ### Logging
 De applicatie logt informatie naar stdout, wat kan worden bekeken met:

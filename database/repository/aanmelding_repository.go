@@ -8,6 +8,18 @@ import (
 	"gorm.io/gorm"
 )
 
+// IAanmeldingRepository definieert de interface voor aanmelding repositories
+type IAanmeldingRepository interface {
+	Create(aanmelding *models.Aanmelding) error
+	FindAll(limit, offset int) ([]*models.Aanmelding, error)
+	FindByID(id string) (*models.Aanmelding, error)
+	Update(aanmelding *models.Aanmelding) error
+	Count() (int64, error)
+}
+
+// Controleer of AanmeldingRepository de IAanmeldingRepository interface implementeert
+var _ IAanmeldingRepository = (*AanmeldingRepository)(nil)
+
 // AanmeldingRepository bevat methoden voor het werken met aanmeldingen in de database
 type AanmeldingRepository struct {
 	db *gorm.DB

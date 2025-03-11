@@ -1,4 +1,5 @@
 #!/bin/bash
+# This script runs database migrations
 set -e
 
 echo "Waiting for database to be ready..."

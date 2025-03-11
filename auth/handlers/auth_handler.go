@@ -3,6 +3,7 @@ package handlers
 import (
 	"dklautomationgo/auth/middleware"
 	"dklautomationgo/auth/service"
+	"dklautomationgo/database/repository"
 	"dklautomationgo/models"
 	"log"
 	"net/http"
@@ -12,12 +13,12 @@ import (
 
 // AuthHandler bevat handlers voor authenticatie
 type AuthHandler struct {
-	authService    *service.AuthService
-	authMiddleware *middleware.AuthMiddleware
+	authService    service.IAuthService
+	authMiddleware middleware.IAuthMiddleware
 }
 
 // NewAuthHandler maakt een nieuwe AuthHandler
-func NewAuthHandler(authService *service.AuthService, authMiddleware *middleware.AuthMiddleware) *AuthHandler {
+func NewAuthHandler(authService service.IAuthService, authMiddleware middleware.IAuthMiddleware) *AuthHandler {
 	return &AuthHandler{
 		authService:    authService,
 		authMiddleware: authMiddleware,
@@ -344,7 +345,12 @@ func (h *AuthHandler) UpdateAdminPassword(c *gin.Context) {
 	}
 
 	// Update het wachtwoord direct in de database via de repository
-	userRepo := h.authService.GetUserRepository()
+	userRepoInterface := h.authService.GetUserRepository()
+	userRepo, ok := userRepoInterface.(*repository.UserRepository)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Kan user repository niet casten"})
+		return
+	}
 
 	// Haal de gebruiker op
 	existingUser, err := userRepo.FindByEmail("beheerder@dekoninklijkeloop.nl")

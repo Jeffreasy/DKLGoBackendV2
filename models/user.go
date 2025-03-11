@@ -14,6 +14,7 @@ const (
 	RoleBeheerder    UserRole = "BEHEERDER"
 	RoleAdmin        UserRole = "ADMIN"
 	RoleVrijwilliger UserRole = "VRIJWILLIGER"
+	RoleGebruiker    UserRole = "GEBRUIKER"
 )
 
 // UserStatus definieert de mogelijke statussen voor gebruikers
