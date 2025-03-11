@@ -10,6 +10,7 @@ Dit document beschrijft de testprocedures voor de De Koninklijke Loop applicatie
 5. [Testdatabase Setup](#testdatabase-setup)
 6. [Testscripts](#testscripts)
 7. [Troubleshooting](#troubleshooting)
+8. [End-to-End (E2E) Tests](#end-to-end-e2e-tests)
 
 ## Teststructuur
 
@@ -326,6 +327,103 @@ go test ./auth/handlers -v
 Write-Host "Unit tests voltooid."
 ```
 
+### `scripts/run-tests.ps1`
+
+Dit script kan worden gebruikt om unit tests, integratie tests of beide uit te voeren:
+
+```powershell
+param (
+    [switch]$Unit,
+    [switch]$Integration,
+    [switch]$Coverage
+)
+
+# Start test database
+Write-Host "Starting test database..." -ForegroundColor Cyan
+docker-compose -f docker-compose.test.yml up -d test-db
+
+# Wait for database to be ready
+Write-Host "Waiting for test database to be ready..." -ForegroundColor Cyan
+Start-Sleep -Seconds 5
+
+try {
+    if ($Unit -or (!$Unit -and !$Integration)) {
+        # Run unit tests
+        Write-Host "Running unit tests..." -ForegroundColor Green
+        if ($Coverage) {
+            go test -v -coverprofile=coverage.out ./auth/... ./database/... ./handlers/... ./models/... ./services/...
+            go tool cover -html=coverage.out -o coverage.html
+            Start-Process coverage.html
+        } else {
+            go test -v ./auth/... ./database/... ./handlers/... ./models/... ./services/...
+        }
+    }
+
+    if ($Integration) {
+        # Run integration tests
+        Write-Host "Running integration tests..." -ForegroundColor Green
+        go test -v ./tests/integration/...
+    }
+} finally {
+    # Stop test database
+    Write-Host "Stopping test database..." -ForegroundColor Cyan
+    docker-compose -f docker-compose.test.yml down
+}
+```
+
+Om alleen de integratie tests uit te voeren, gebruik je de `-Integration` parameter:
+
+```powershell
+.\scripts\run-tests.ps1 -Integration
+```
+
+### `run_integration_tests.ps1`
+
+Als alternatief kun je het volgende script gebruiken dat specifiek is ontworpen voor het uitvoeren van integratie tests:
+
+```powershell
+#!/usr/bin/env pwsh
+# Script to run integration tests with the correct environment variables
+
+# Start the test database container
+Write-Host "Starting test database container..." -ForegroundColor Cyan
+docker-compose -f docker-compose.test.yml up -d test-db
+
+# Wait for the database to be ready
+Write-Host "Waiting for test database to be ready..." -ForegroundColor Cyan
+Start-Sleep -Seconds 5
+
+# Create the test database if it doesn't exist
+Write-Host "Creating test database if it doesn't exist..." -ForegroundColor Cyan
+docker exec dklautomationgo-test-db psql -U postgres -c "DROP DATABASE IF EXISTS dklautomationgo_test;" 2>&1 | Out-Null
+docker exec dklautomationgo-test-db psql -U postgres -c "CREATE DATABASE dklautomationgo_test WITH ENCODING 'UTF8' OWNER postgres;" 2>&1 | Out-Null
+
+# Set environment variables for the test database
+$env:TEST_DB_HOST = "localhost"
+$env:TEST_DB_PORT = "5433"
+$env:TEST_DB_USER = "postgres"
+$env:TEST_DB_PASSWORD = "Bootje@12"
+$env:TEST_DB_NAME = "dklautomationgo_test"
+
+try {
+    # Run the integration tests
+    Write-Host "Running integration tests..." -ForegroundColor Green
+    go test -v ./tests/integration/...
+}
+finally {
+    # Stop the test database container
+    Write-Host "Stopping test database container..." -ForegroundColor Cyan
+    docker-compose -f docker-compose.test.yml down
+}
+```
+
+Dit script zorgt voor:
+1. Het starten van de test database container
+2. Het instellen van de juiste omgevingsvariabelen
+3. Het aanmaken van de test database als deze nog niet bestaat
+4. Het uitvoeren van de integratie tests
+5. Het opruimen van resources na afloop
+
 ### `scripts/setup_test_db.ps1`
 
 Dit script maakt een testdatabase aan en stelt de omgevingsvariabelen in:
@@ -377,37 +475,188 @@ Write-Host "Omgevingsvariabelen zijn ingesteld voor de tests."
 Write-Host "Je kunt nu de tests uitvoeren met: go test ./..."
 ```
 
+## End-to-End (E2E) Tests
+
+End-to-End tests testen de volledige applicatie, inclusief de frontend, backend, database en externe services. De E2E tests zijn geïmplementeerd met behulp van Docker Compose om een geïsoleerde testomgeving op te zetten.
+
+### E2E Tests Uitvoeren
+
+Om de E2E tests uit te voeren, gebruik je het volgende commando:
+
+```powershell
+# Windows
+.\run_e2e_tests.ps1
+```
+
+```bash
+# Linux/macOS
+./run_e2e_tests.sh
+```
+
+### E2E Test Structuur
+
+De E2E tests zijn georganiseerd in de volgende structuur:
+
+```
+tests/e2e/
+├── docker-compose.e2e.yml  # Docker Compose configuratie voor de test omgeving
+├── fixtures/               # Test data fixtures
+│   ├── aanmelding.go       # Testdata voor aanmeldingen
+│   └── auth.go             # Testdata voor authenticatie
+├── helpers/                # Helper functies voor de tests
+│   ├── api_client.go       # API client voor het maken van HTTP requests
+│   ├── assertions.go       # Assertions voor het valideren van responses
+│   ├── mailhog_client.go   # MailHog client voor het testen van emails
+│   └── test_server.go      # Helper voor het starten/stoppen van de test server
+├── scenarios/              # Test scenario's
+│   ├── aanmelding_flow_test.go  # Test voor de aanmeldingsflow
+│   ├── login_flow_test.go       # Test voor de loginflow
+│   └── test_environment.go      # Setup code voor de test omgeving
+├── init-db.sql             # SQL script voor het initialiseren van de testdatabase
+└── README.md               # Documentatie voor de E2E tests
+```
+
+### Huidige Status
+
+De volgende test scenario's zijn geïmplementeerd:
+
+1. **Aanmeldingsflow**
+   - Test voor het indienen van een geldige aanmelding
+   - Test voor validatie bij ongeldige aanmeldingen
+   - Email verificatie is momenteel uitgeschakeld in de tests omdat de SMTP instellingen niet correct zijn geconfigureerd in de testomgeving
+
+2. **Loginflow**
+   - Test voor mislukte login pogingen
+   - Test voor succesvolle login is momenteel uitgeschakeld omdat de login endpoint niet correct werkt in de testomgeving
+
+Voor meer informatie over de huidige status en geplande verbeteringen, zie [ENDTOENDDocumentatie.md](ENDTOENDDocumentatie.md).
+
+### Nieuwe E2E Tests Toevoegen
+
+Om een nieuwe E2E test toe te voegen:
+
+1. Maak een nieuw bestand aan in de `tests/e2e/scenarios/` directory
+2. Implementeer een test suite die `suite.Suite` uitbreidt
+3. Implementeer de `SetupSuite` en `TearDownSuite` methoden
+4. Voeg test methoden toe die beginnen met `Test`
+5. Voeg een test runner functie toe die de suite uitvoert
+
+Voorbeeld:
+
+```go
+package scenarios
+
+import (
+	"testing"
+	"github.com/stretchr/testify/suite"
+	"dklautomationgo/tests/e2e/helpers"
+)
+
+type MijnTestSuite struct {
+	suite.Suite
+	env      *TestEnvironment
+}
+
+func (s *MijnTestSuite) SetupSuite() {
+	var err error
+	s.env, err = NewTestEnvironment()
+	s.Require().NoError(err)
+}
+
+func (s *MijnTestSuite) TearDownSuite() {
+	s.env.Cleanup()
+}
+
+func (s *MijnTestSuite) TestMijnFeature() {
+	// Test implementatie
+}
+
+func TestMijnTestSuite(t *testing.T) {
+	suite.Run(t, new(MijnTestSuite))
+}
+```
+
+### Fixtures Gebruiken
+
+Gebruik fixtures om test data te definiëren:
+
+```go
+// In fixtures/mijn_fixture.go
+package fixtures
+
+import "dklautomationgo/models"
+
+func GetMijnTestData() models.MijnModel {
+	return models.MijnModel{
+		// Test data
+	}
+}
+
+// In je test
+testData := fixtures.GetMijnTestData()
+```
+
+### Assertions Gebruiken
+
+Gebruik de assertions helpers om responses te valideren:
+
+```go
+// Controleer JSON response
+response, err := s.env.APIClient.Get("/api/endpoint")
+var responseData map[string]interface{}
+helpers.AssertJSONResponse(s.T(), response, 200, &responseData)
+
+// Controleer email
+helpers.AssertEmailReceived(s.T(), s.env.MailClient, "user@example.com", "Email onderwerp")
+```
+
 ## Troubleshooting
 
 ### Database Connectie Problemen
 
 Als je problemen ondervindt met de database connectie tijdens het testen:
 
-1. Controleer of de Docker container draait: `docker ps`
-2. Controleer of de testdatabase bestaat: `docker exec dklautomationgo-db psql -U postgres -c "\l"`
-3. Controleer de omgevingsvariabelen: 
+1. Controleer of de Docker containers draaien:
    ```powershell
-   echo $env:TEST_DB_HOST
-   echo $env:TEST_DB_PORT
-   echo $env:TEST_DB_USER
-   echo $env:TEST_DB_PASSWORD
-   echo $env:TEST_DB_NAME
+   docker-compose -f tests/e2e/docker-compose.e2e.yml ps
    ```
 
-### Testdatabase Opnieuw Aanmaken
+2. Controleer de logs van de database container:
+   ```powershell
+   docker-compose -f tests/e2e/docker-compose.e2e.yml logs e2e-db
+   ```
 
-Als je de testdatabase volledig opnieuw wilt aanmaken:
+3. Controleer of de database correct is geïnitialiseerd:
+   ```powershell
+   docker-compose -f tests/e2e/docker-compose.e2e.yml exec e2e-db psql -U postgres -d dklautomationgo_e2e -c "\dt"
+   ```
 
-```powershell
-docker exec -it dklautomationgo-db psql -U postgres -c "DROP DATABASE IF EXISTS dklautomationgo_test;"
-docker exec -it dklautomationgo-db psql -U postgres -c "CREATE DATABASE dklautomationgo_test;"
-```
+### App Container Problemen
 
-### Mock Verwachtingen Problemen
+Als de app container niet start of niet gezond is:
 
-Als je problemen ondervindt met mock verwachtingen:
+1. Controleer de logs van de app container:
+   ```powershell
+   docker-compose -f tests/e2e/docker-compose.e2e.yml logs app
+   ```
 
-1. Controleer of alle verwachte methode aanroepen zijn gedefinieerd met `On()`
-2. Controleer of de parameters overeenkomen
-3. Gebruik `mock.Anything` voor parameters die je niet exact wilt matchen
-4. Voeg `AssertExpectations(t)` toe aan het einde van je test om te controleren of alle verwachtingen zijn voldaan 
+2. Controleer of de health endpoint bereikbaar is:
+   ```powershell
+   Invoke-WebRequest -Uri http://localhost:8081/health
+   ```
+
+### Email Problemen
+
+Als de email tests falen:
+
+1. Controleer of MailHog draait:
+   ```powershell
+   docker-compose -f tests/e2e/docker-compose.e2e.yml ps mailhog
+   ```
+
+2. Controleer de MailHog web interface op http://localhost:8025
+
+3. Controleer de logs van de app container voor email gerelateerde fouten:
+   ```powershell
+   docker-compose -f tests/e2e/docker-compose.e2e.yml logs app | Select-String -Pattern "email"
+   ``` 

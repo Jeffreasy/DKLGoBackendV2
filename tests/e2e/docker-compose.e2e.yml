@@ -1,0 +1,46 @@
+services:
+  app:
+    build:
+      context: ../../
+      dockerfile: Dockerfile
+    environment:
+      - DB_HOST=e2e-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=Bootje@12
+      - DB_NAME=dklautomationgo_e2e
+      - GIN_MODE=test
+    ports:
+      - "8081:8080"
+    command: ["/app/dklautomationgo"]
+    depends_on:
+      e2e-db:
+        condition: service_healthy
+
+  e2e-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=Bootje@12
+      - POSTGRES_DB=dklautomationgo_e2e
+    ports:
+      - "5434:5432"
+    command: >
+      postgres -c 'max_connections=100'
+      -c 'shared_buffers=256MB'
+      -c 'log_statement=all'
+      -c 'client_min_messages=notice'
+    volumes:
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "1025:1025"  # SMTP server
+      - "8025:8025"  # Web UI 

@@ -9,7 +9,7 @@ $DB_PASSWORD = if ($env:TEST_DB_PASSWORD) { $env:TEST_DB_PASSWORD } else { "Boot
 $DB_NAME = if ($env:TEST_DB_NAME) { $env:TEST_DB_NAME } else { "dklautomationgo_test" }
 
 # Controleer of Docker draait
-$dockerRunning = docker ps 2>&1
+docker ps 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Docker is niet actief. Start Docker en probeer het opnieuw."
     exit 1

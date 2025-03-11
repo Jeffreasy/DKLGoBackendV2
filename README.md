@@ -501,6 +501,45 @@ go test ./tests/integration -v
 
 **Opmerking**: Voor het uitvoeren van integratie tests moet de database container draaien en toegankelijk zijn.
 
+#### Alleen Integratie Tests Uitvoeren
+
+Om alleen de integratie tests uit te voeren, kun je het volgende PowerShell script gebruiken:
+
+```powershell
+.\scripts\run-tests.ps1 -Integration
+```
+
+Dit script:
+1. Start de test database container
+2. Wacht tot de database gereed is
+3. Voert alleen de integratie tests uit
+4. Stopt en verwijdert de test database container na afloop
+
+Als je problemen ondervindt met de database verbinding, kun je ook het volgende script gebruiken:
+
+```powershell
+.\run_integration_tests.ps1
+```
+
+Dit script zorgt voor:
+1. Het starten van de test database container
+2. Het instellen van de juiste omgevingsvariabelen
+3. Het aanmaken van de test database als deze nog niet bestaat
+4. Het uitvoeren van de integratie tests
+5. Het opruimen van resources na afloop
+
+**Omgevingsvariabelen voor Integratie Tests**
+
+Voor het uitvoeren van integratie tests zijn de volgende omgevingsvariabelen nodig:
+
+```powershell
+$env:TEST_DB_HOST="localhost"
+$env:TEST_DB_PORT="5433"  # Let op: dit is de gemapte poort in docker-compose.test.yml
+$env:TEST_DB_USER="postgres"
+$env:TEST_DB_PASSWORD="Bootje@12"
+$env:TEST_DB_NAME="dklautomationgo_test"
+```
+
 ### Mocks
 
 Voor unit tests worden mock implementaties gebruikt van repositories en services:
@@ -589,4 +628,114 @@ De applicatie logt informatie naar stdout, wat kan worden bekeken met:
 ```
 
 ### Health Check
-De applicatie biedt een health check endpoint op `/health` om de status te controleren. 
+De applicatie biedt een health check endpoint op `/health` om de status te controleren.
+
+## Tests
+
+De applicatie bevat verschillende soorten tests:
+
+### Unit Tests
+
+Unit tests testen individuele componenten in isolatie.
+
+```bash
+go test -v ./... -short
+# of
+make test-unit
+```
+
+### Integratie Tests
+
+Integratie tests testen de interactie tussen verschillende componenten.
+
+```bash
+# Windows
+.\run_integration_tests.ps1
+# of
+make test-integration
+
+# Linux/macOS
+chmod +x run_integration_tests.sh
+./run_integration_tests.sh
+# of
+make test-integration
+```
+
+### End-to-End (E2E) Tests
+
+End-to-End tests testen de volledige applicatie, inclusief de frontend, backend, database en externe services. De E2E tests zijn geïmplementeerd met behulp van Docker Compose om een geïsoleerde testomgeving op te zetten.
+
+#### Huidige Status
+
+De E2E tests zijn succesvol geïmplementeerd en kunnen worden uitgevoerd met het volgende commando:
+
+```bash
+# Windows
+.\run_e2e_tests.ps1
+# of
+make test-e2e
+
+# Linux/macOS
+chmod +x run_e2e_tests.sh
+./run_e2e_tests.sh
+# of
+make test-e2e
+```
+
+De volgende test scenario's zijn geïmplementeerd:
+- **Aanmeldingsflow**: Testen van het indienen van een aanmelding
+- **Validatie**: Testen van validatie bij ongeldige aanmeldingen
+- **Login**: Testen van mislukte login pogingen
+
+Opmerking: Sommige tests zijn momenteel uitgeschakeld vanwege beperkingen in de testomgeving. Zie [ENDTOENDDocumentatie.md](ENDTOENDDocumentatie.md) voor meer informatie over de huidige status en geplande verbeteringen.
+
+#### Testomgeving
+
+De E2E tests maken gebruik van:
+- Een geïsoleerde PostgreSQL database
+- MailHog voor het testen van email functionaliteit
+- Een aparte instantie van de applicatie
+
+#### Troubleshooting
+
+Als je problemen ondervindt bij het uitvoeren van de E2E tests, raadpleeg dan de [ENDTOENDDocumentatie.md](ENDTOENDDocumentatie.md) voor troubleshooting tips.
+
+### Alle Tests Uitvoeren
+
+Om alle tests uit te voeren:
+
+```bash
+make test
+```
+
+Zie [TESTING.md](TESTING.md) voor meer informatie over het testen van de applicatie.
+
+## Makefile
+
+De applicatie bevat een Makefile met verschillende commando's:
+
+```bash
+# Bouw de applicatie
+make build
+
+# Voer de applicatie uit
+make run
+
+# Voer alle tests uit
+make test
+
+# Voer alleen unit tests uit
+make test-unit
+
+# Voer alleen integratie tests uit
+make test-integration
+
+# Voer alleen end-to-end tests uit
+make test-e2e
+
+# Ruim build artifacts en test containers op
+make clean
+
+# Toon help informatie
+make help
+``` 
